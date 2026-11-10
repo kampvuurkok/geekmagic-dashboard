@@ -1,0 +1,25 @@
+# GeekMagic-dashboard – stack voor de Compose-pagina van Unraid.
+# Instellingen staan in de ENV File van de stack (zie .env.example).
+services:
+  geekmagic-dashboard:
+    image: ghcr.io/kampvuurkok/geekmagic-dashboard:latest
+    container_name: geekmagic-dashboard
+    restart: unless-stopped
+    env_file: .env
+    # root zonder extra rechten: kan alleen bestanden van root lezen (o.a. /boot), verder niets
+    user: "0:0"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - /mnt/user/appdata/geekmagic-dashboard/data:/data
+      # alleen-lezen: updatestatus van Unraid, plugins en Compose Manager
+      - /boot/config/plugins:/host/plugins:ro
+      - /tmp/plugins:/host/tmp-plugins:ro
+      - /tmp/unraidcheck:/host/unraidcheck:ro
+    networks:
+      - phplist
+
+networks:
+  phplist:
+    external: true
+    name: phplist_phplist-net
