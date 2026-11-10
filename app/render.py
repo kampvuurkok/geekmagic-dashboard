@@ -33,6 +33,8 @@ GROEN = (124, 197, 118)
 ROOD = (229, 83, 61)
 BLAUW = (96, 170, 235)
 WOLK = (205, 200, 196)
+INSTA_KLEUR = _hex(os.environ.get("INSTAGRAM_COLOR", "D6338A"), (214, 51, 138))
+FACEBOOK_KLEUR = _hex(os.environ.get("FACEBOOK_COLOR", "3B7BF0"), (59, 123, 240))
 WOLK_DONKER = (140, 134, 130)
 
 _fonts = {}
@@ -210,7 +212,25 @@ def icoon_duim(draw, cx, cy, m, kleur=ORANJE):
         draw.line((x + u * 0.12, yy, x + u * 0.34, yy), fill=BG, width=max(2, int(u * 0.025)))
 
 
-ICONEN = {"foto": icoon_foto, "duim": icoon_duim, "mensen": icoon_mensen, "envelop": icoon_envelop, "play": icoon_play, "wereld": icoon_wereld}
+def icoon_camera(draw, cx, cy, m, kleur=ORANJE):
+    """Klassiek fototoestel: dichte body met zoekerbult, flitser en lens."""
+    u = m * S
+    x, y = cx * S, cy * S
+    # zoekerbult en flitser
+    draw.rounded_rectangle((x - u * 0.14, y - u * 0.34, x + u * 0.14, y - u * 0.18), radius=u * 0.04, fill=kleur)
+    draw.rectangle((x - u * 0.38, y - u * 0.28, x - u * 0.24, y - u * 0.2), fill=kleur)
+    # body
+    draw.rounded_rectangle((x - u * 0.46, y - u * 0.22, x + u * 0.46, y + u * 0.3), radius=u * 0.07, fill=kleur)
+    # lens: donkere ring met gekleurd midden
+    r1, r2 = u * 0.19, u * 0.11
+    ly = y + u * 0.04
+    draw.ellipse((x - r1, ly - r1, x + r1, ly + r1), fill=BG)
+    draw.ellipse((x - r2, ly - r2, x + r2, ly + r2), fill=kleur)
+    # ontspanknop
+    draw.rectangle((x + u * 0.26, y - u * 0.27, x + u * 0.38, y - u * 0.22), fill=kleur)
+
+
+ICONEN = {"camera": icoon_camera, "foto": icoon_foto, "duim": icoon_duim, "mensen": icoon_mensen, "envelop": icoon_envelop, "play": icoon_play, "wereld": icoon_wereld}
 
 
 # ---------- pagina-onderdelen ----------
@@ -252,10 +272,13 @@ def naar_jpg(img) -> bytes:
 
 # ---------- pagina's ----------
 
-def pagina_getal(titel, icoon, waarde, delta, onderschrift, status, extra=None) -> bytes:
+def pagina_getal(titel, icoon, waarde, delta, onderschrift, status, extra=None, icoonkleur=None) -> bytes:
     img, d = nieuw_canvas()
     kop(d, titel, status)
-    ICONEN[icoon](d, 120, 66, 56)
+    if icoonkleur:
+        ICONEN[icoon](d, 120, 66, 56, icoonkleur)
+    else:
+        ICONEN[icoon](d, 120, 66, 56)
     tekst = nl_getal(waarde) if isinstance(waarde, int) else "–"
     tekst_mid(d, 102, tekst, fit_font(d, tekst, "Bold", 62, 212), TEKST)
     tekst_mid(d, 166, onderschrift, font("Medium", 13), GRIJS)

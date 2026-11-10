@@ -69,7 +69,7 @@ CFG = {
         "token": env("META_PAGE_TOKEN", ""),
         "page_id": env("META_PAGE_ID", ""),
         "ig_id": env("META_IG_ID", ""),
-        "version": env("META_API_VERSION", "v23.0"),
+        "version": env("META_API_VERSION", "v27.0"),
         "every": env("STATS_MINUTES", 15, int) * 60,
     },
     "wordpress": {
@@ -228,7 +228,8 @@ def main():
             beelden["nieuwsbrief"] = render.pagina_getal("Nieuwsbrief", "envelop", b.waarde, delta,
                                                          CFG["newsletter_label"], st)
 
-        for soort, titel, icoon in (("instagram", "Instagram", "foto"), ("facebook", "Facebook", "duim")):
+        for soort, titel, icoon, kleur in (("instagram", "Instagram", "camera", render.INSTA_KLEUR),
+                                           ("facebook", "Facebook", "duim", render.FACEBOOK_KLEUR)):
             if soort in actief:
                 b = bronnen["meta"]
                 n = b.waarde.get(soort) if b.waarde else None
@@ -236,7 +237,7 @@ def main():
                 if n is not None and b.bijgewerkt:
                     delta = state.delta(soort, n, b.bijgewerkt.date().isoformat())
                 beelden[soort] = render.pagina_getal(titel, icoon, n, delta, "volgers",
-                                                     {**algemeen, **b.status()})
+                                                     {**algemeen, **b.status()}, icoonkleur=kleur)
         if "website" in actief:
             b = bronnen["website"]
             v = b.waarde
