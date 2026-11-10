@@ -330,10 +330,12 @@ def fetch_wordpress_updates(cfg: dict) -> dict:
 
 # ---------------------------------------------------------------- Umami (websitebezoekers)
 
-def _umami_headers(cfg: dict) -> dict:
-    """API-sleutel als die er is, anders inloggen met gebruikersnaam/wachtwoord."""
+def _umami_headers(cfg: dict, vorm: int = 0) -> dict:
+    """API-sleutel als die er is (twee schrijfwijzen), anders inloggen met gebruikersnaam/wachtwoord."""
     if cfg.get("api_key"):
-        return {"x-umami-api-key": cfg["api_key"], **UA}
+        if vorm == 0:
+            return {"x-umami-api-key": cfg["api_key"], **UA}
+        return {"Authorization": f"Bearer {cfg['api_key']}", **UA}
     r = requests.post(
         cfg["url"].rstrip("/") + "/api/auth/login",
         json={"username": cfg["username"], "password": cfg["password"]},
@@ -353,15 +355,17 @@ def _waarde(v):
 
 def fetch_umami(cfg: dict) -> dict:
     basis = cfg["url"].rstrip("/") + f"/api/websites/{cfg['website_id']}"
-    kop = _umami_headers(cfg)
     nu = dt.datetime.now(TZ)
     middernacht = nu.replace(hour=0, minute=0, second=0, microsecond=0)
-    r = requests.get(
-        basis + "/stats",
-        params={"startAt": int(middernacht.timestamp() * 1000), "endAt": int(nu.timestamp() * 1000)},
-        headers=kop,
-        timeout=15,
-    )
+    params = {"startAt": int(middernacht.timestamp() * 1000), "endAt": int(nu.timestamp() * 1000)}
+    # zelf gehoste Umami-versies verschillen in hoe een API-sleutel mee moet; probeer beide
+    vormen = [cfg.get("vorm", 0), 1 - cfg.get("vorm", 0)] if cfg.get("api_key") else [0]
+    for vorm in vormen:
+        kop = _umami_headers(cfg, vorm)
+        r = requests.get(basis + "/stats", params=params, headers=kop, timeout=15)
+        if r.status_code != 401:
+            cfg["vorm"] = vorm
+            break
     r.raise_for_status()
     s = r.json()
     actief = None
