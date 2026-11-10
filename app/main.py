@@ -228,14 +228,14 @@ def main():
             beelden["nieuwsbrief"] = render.pagina_getal("Nieuwsbrief", "envelop", b.waarde, delta,
                                                          CFG["newsletter_label"], st)
 
-        for soort, titel in (("instagram", "Instagram"), ("facebook", "Facebook")):
+        for soort, titel, icoon in (("instagram", "Instagram", "foto"), ("facebook", "Facebook", "duim")):
             if soort in actief:
                 b = bronnen["meta"]
                 n = b.waarde.get(soort) if b.waarde else None
                 delta = None
                 if n is not None and b.bijgewerkt:
                     delta = state.delta(soort, n, b.bijgewerkt.date().isoformat())
-                beelden[soort] = render.pagina_getal(titel, "mensen", n, delta, "volgers",
+                beelden[soort] = render.pagina_getal(titel, icoon, n, delta, "volgers",
                                                      {**algemeen, **b.status()})
         if "website" in actief:
             b = bronnen["website"]

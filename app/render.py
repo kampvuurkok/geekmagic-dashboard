@@ -179,7 +179,38 @@ def icoon_wereld(draw, cx, cy, m, kleur=ORANJE):
     draw.line((x - r, y, x + r, y), fill=kleur, width=w)
 
 
-ICONEN = {"mensen": icoon_mensen, "envelop": icoon_envelop, "play": icoon_play, "wereld": icoon_wereld}
+def icoon_foto(draw, cx, cy, m, kleur=ORANJE):
+    """Fotolijstje met bergje en zonnetje."""
+    w = max(2, int(m * 0.06 * S))
+    x0, y0, x1, y1 = (cx - m * 0.42) * S, (cy - m * 0.32) * S, (cx + m * 0.42) * S, (cy + m * 0.32) * S
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=m * 0.08 * S, outline=kleur, width=w)
+    draw.polygon([(x0 + w * 2, y1 - w * 2), ((cx - m * 0.12) * S, (cy - m * 0.04) * S),
+                  ((cx + m * 0.04) * S, (cy + m * 0.12) * S), ((cx + m * 0.16) * S, (cy + m * 0.02) * S),
+                  (x1 - w * 2, y1 - w * 2)], fill=kleur)
+    r = m * 0.07 * S
+    zx, zy = (cx + m * 0.2) * S, (cy - m * 0.14) * S
+    draw.ellipse((zx - r, zy - r, zx + r, zy + r), fill=kleur)
+
+
+def icoon_duim(draw, cx, cy, m, kleur=ORANJE):
+    """Duim omhoog."""
+    u = m * S
+    x, y = cx * S, cy * S
+    # mouw
+    draw.rounded_rectangle((x - u * 0.42, y - u * 0.05, x - u * 0.24, y + u * 0.36), radius=u * 0.03, fill=kleur)
+    # hand
+    draw.rounded_rectangle((x - u * 0.2, y - u * 0.08, x + u * 0.34, y + u * 0.36), radius=u * 0.09, fill=kleur)
+    # duim
+    draw.polygon([(x - u * 0.2, y - u * 0.04), (x - u * 0.04, y - u * 0.36), (x + u * 0.06, y - u * 0.38),
+                  (x + u * 0.1, y - u * 0.3), (x + u * 0.04, y - u * 0.06)], fill=kleur)
+    draw.ellipse((x - u * 0.02, y - u * 0.43, x + u * 0.12, y - u * 0.29), fill=kleur)
+    # vingerlijnen
+    for i in range(1, 4):
+        yy = y - u * 0.08 + i * u * 0.11
+        draw.line((x + u * 0.12, yy, x + u * 0.34, yy), fill=BG, width=max(2, int(u * 0.025)))
+
+
+ICONEN = {"foto": icoon_foto, "duim": icoon_duim, "mensen": icoon_mensen, "envelop": icoon_envelop, "play": icoon_play, "wereld": icoon_wereld}
 
 
 # ---------- pagina-onderdelen ----------
