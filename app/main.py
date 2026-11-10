@@ -65,6 +65,13 @@ CFG = {
         "password": env("UMAMI_PASSWORD", ""),
         "every": env("STATS_MINUTES", 15, int) * 60,
     },
+    "meta": {
+        "token": env("META_PAGE_TOKEN", ""),
+        "page_id": env("META_PAGE_ID", ""),
+        "ig_id": env("META_IG_ID", ""),
+        "version": env("META_API_VERSION", "v23.0"),
+        "every": env("STATS_MINUTES", 15, int) * 60,
+    },
     "wordpress": {
         "host": env("WP_SSH_HOST", ""),
         "port": env("WP_SSH_PORT", 22, int),
@@ -78,7 +85,7 @@ CFG = {
     },
 }
 
-BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "updates": "dash_9_updates.jpg"}
+BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "instagram": "dash_2_instagram.jpg", "facebook": "dash_3_facebook.jpg", "updates": "dash_9_updates.jpg"}
 
 
 class State:
@@ -152,12 +159,19 @@ def main():
         "weer": Bron("weer", lambda: sources.fetch_weather(w["lat"], w["lon"]), w["every"]),
         "regen": Bron("regen", lambda: sources.fetch_rain(w["lat"], w["lon"]), w["rain_every"]),
         "nieuwsbrief": Bron("nieuwsbrief", lambda: sources.fetch_phplist(p), p["every"]),
+        "meta": Bron("meta", lambda: sources.fetch_meta(CFG["meta"]), CFG["meta"]["every"]),
         "website": Bron("website", lambda: sources.fetch_umami(CFG["umami"]), CFG["umami"]["every"]),
         "updates": Bron("updates", lambda: sources.fetch_unraid_updates(CFG["unraid"]), CFG["unraid"]["every"]),
         "wordpress": Bron("wordpress", lambda: sources.fetch_wordpress_updates(CFG["wordpress"]),
                           CFG["wordpress"]["every"]),
     }
 
+    me = CFG["meta"]
+    if not (me["token"] and me["page_id"]):
+        if {"instagram", "facebook"} & set(CFG["pages"]):
+            log.warning("META_PAGE_TOKEN/META_PAGE_ID niet ingesteld: Instagram- en Facebook-pagina uit")
+        CFG["pages"] = [pg for pg in CFG["pages"] if pg not in ("instagram", "facebook")]
+        del bronnen["meta"]
     um = CFG["umami"]
     if not (um["url"] and um["website_id"] and (um["api_key"] or (um["username"] and um["password"]))):
         if "website" in CFG["pages"]:
@@ -214,6 +228,15 @@ def main():
             beelden["nieuwsbrief"] = render.pagina_getal("Nieuwsbrief", "envelop", b.waarde, delta,
                                                          CFG["newsletter_label"], st)
 
+        for soort, titel in (("instagram", "Instagram"), ("facebook", "Facebook")):
+            if soort in actief:
+                b = bronnen["meta"]
+                n = b.waarde.get(soort) if b.waarde else None
+                delta = None
+                if n is not None and b.bijgewerkt:
+                    delta = state.delta(soort, n, b.bijgewerkt.date().isoformat())
+                beelden[soort] = render.pagina_getal(titel, "mensen", n, delta, "volgers",
+                                                     {**algemeen, **b.status()})
         if "website" in actief:
             b = bronnen["website"]
             v = b.waarde

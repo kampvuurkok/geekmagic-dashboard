@@ -5,6 +5,7 @@ Dashboard voor een **GeekMagic SmallTV-PRO** (standaardfirmware). Een kleine con
 ## Pagina's
 
 - **Weer** – temperatuur, min/max, wind en regen de komende 2 uur (Open-Meteo + Buienradar, geen sleutel nodig)
+- **Instagram** en **Facebook** – volgers, met de groei van vandaag (Meta Graph API, één pagina-token)
 - **Nieuwsbrief** – aantal bevestigde leden van een phpList-lijst, met de groei van vandaag
 - **Website** – bezoekers en weergaven van vandaag, en wie er nu online is (Umami)
 - **Updates** – alleen als er iets klaarstaat: dockers (Unraid API), compose-containers (Compose Manager; vastgepinde tellen niet mee), plugins, Unraid zelf en WordPress-sites (kern, plugins, thema's via SSH + WP-CLI)
@@ -46,6 +47,7 @@ Het dashboard telt wat Unraid en Compose Manager zelf gevonden hebben. Staat hun
 
 - **phpList**: maak een MySQL-gebruiker die alleen mag lezen:
   `CREATE USER 'geekmagic'@'%' IDENTIFIED BY '...'; GRANT SELECT ON phplist.* TO 'geekmagic'@'%';`
+- **Meta**: maak een app op developers.facebook.com, haal in de Graph API Explorer een gebruikerstoken op met `pages_show_list`, `pages_read_engagement`, `instagram_basic`, verleng hem in de Access Token Debugger, en vraag met die token `me/accounts` op: de `access_token` van je pagina verloopt niet.
 - **Umami**: website-ID staat in de adresbalk bij de website (`/websites/<id>`); maak een API-sleutel onder *Settings → API keys*, of gebruik een gebruiker met alleen leesrechten.
 - **Unraid API**: *Settings → Management Access → API Keys*, rol **Viewer**.
 - **WordPress**: maak een SSH-sleutel in de datamap en zet hem bij je hosting:

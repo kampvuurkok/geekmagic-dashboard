@@ -377,3 +377,36 @@ def fetch_umami(cfg: dict) -> dict:
     except (requests.RequestException, ValueError, TypeError):
         pass
     return {"visitors": _waarde(s.get("visitors")), "pageviews": _waarde(s.get("pageviews")), "active": actief}
+
+
+# ---------------------------------------------------------------- Meta (Facebook + Instagram)
+
+def fetch_meta(cfg: dict) -> dict:
+    """Volgers van de Facebook-pagina en het gekoppelde Instagram-account (één pagina-token)."""
+    basis = f"https://graph.facebook.com/{cfg['version']}"
+    res = {"facebook": None, "instagram": None, "errors": []}
+
+    def get(pad, velden):
+        r = requests.get(f"{basis}/{pad}", params={"fields": velden, "access_token": cfg["token"]},
+                         headers=UA, timeout=20)
+        j = r.json()
+        if "error" in j:
+            # nooit de token loggen: alleen type en bericht
+            raise RuntimeError(f"{j['error'].get('type')}: {j['error'].get('message')}")
+        return j
+
+    try:
+        p = get(cfg["page_id"], "followers_count,fan_count,instagram_business_account")
+        res["facebook"] = int(p.get("followers_count") or p.get("fan_count") or 0)
+        ig_id = cfg.get("ig_id") or (p.get("instagram_business_account") or {}).get("id")
+    except (requests.RequestException, RuntimeError, ValueError) as e:
+        res["errors"].append(f"facebook: {e}")
+        ig_id = cfg.get("ig_id")
+    if ig_id:
+        try:
+            res["instagram"] = int(get(ig_id, "followers_count").get("followers_count") or 0)
+        except (requests.RequestException, RuntimeError, ValueError) as e:
+            res["errors"].append(f"instagram: {e}")
+    if res["facebook"] is None and res["instagram"] is None:
+        raise RuntimeError("; ".join(res["errors"]) or "geen gegevens")
+    return res
