@@ -6,6 +6,7 @@ Dashboard voor een **GeekMagic SmallTV-PRO** (standaardfirmware). Een kleine con
 
 - **Weer** – temperatuur, min/max, wind en regen de komende 2 uur (Open-Meteo + Buienradar, geen sleutel nodig)
 - **Nieuwsbrief** – aantal bevestigde leden van een phpList-lijst, met de groei van vandaag
+- **Website** – bezoekers en weergaven van vandaag, en wie er nu online is (Umami)
 - **Updates** – alleen als er iets klaarstaat: dockers (Unraid API), compose-containers (Compose Manager; vastgepinde tellen niet mee), plugins, Unraid zelf en WordPress-sites (kern, plugins, thema's via SSH + WP-CLI)
 
 Op elke pagina:
@@ -45,6 +46,7 @@ Het dashboard telt wat Unraid en Compose Manager zelf gevonden hebben. Staat hun
 
 - **phpList**: maak een MySQL-gebruiker die alleen mag lezen:
   `CREATE USER 'geekmagic'@'%' IDENTIFIED BY '...'; GRANT SELECT ON phplist.* TO 'geekmagic'@'%';`
+- **Umami**: website-ID staat in de adresbalk bij de website (`/websites/<id>`); maak een API-sleutel onder *Settings → API keys*, of gebruik een gebruiker met alleen leesrechten.
 - **Unraid API**: *Settings → Management Access → API Keys*, rol **Viewer**.
 - **WordPress**: maak een SSH-sleutel in de datamap en zet hem bij je hosting:
   `ssh-keygen -t ed25519 -N "" -f /mnt/user/appdata/geekmagic-dashboard/data/ssh/id_ed25519`

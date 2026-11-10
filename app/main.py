@@ -57,6 +57,14 @@ CFG = {
         "os_check": env("OS_CHECK_FILE", "/host/unraidcheck/result.json"),
         "every": env("UPDATES_MINUTES", 60, int) * 60,
     },
+    "umami": {
+        "url": env("UMAMI_URL", ""),
+        "website_id": env("UMAMI_WEBSITE_ID", ""),
+        "api_key": env("UMAMI_API_KEY", ""),
+        "username": env("UMAMI_USERNAME", ""),
+        "password": env("UMAMI_PASSWORD", ""),
+        "every": env("STATS_MINUTES", 15, int) * 60,
+    },
     "wordpress": {
         "host": env("WP_SSH_HOST", ""),
         "port": env("WP_SSH_PORT", 22, int),
@@ -70,7 +78,7 @@ CFG = {
     },
 }
 
-BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "updates": "dash_9_updates.jpg"}
+BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "updates": "dash_9_updates.jpg"}
 
 
 class State:
@@ -144,11 +152,18 @@ def main():
         "weer": Bron("weer", lambda: sources.fetch_weather(w["lat"], w["lon"]), w["every"]),
         "regen": Bron("regen", lambda: sources.fetch_rain(w["lat"], w["lon"]), w["rain_every"]),
         "nieuwsbrief": Bron("nieuwsbrief", lambda: sources.fetch_phplist(p), p["every"]),
+        "website": Bron("website", lambda: sources.fetch_umami(CFG["umami"]), CFG["umami"]["every"]),
         "updates": Bron("updates", lambda: sources.fetch_unraid_updates(CFG["unraid"]), CFG["unraid"]["every"]),
         "wordpress": Bron("wordpress", lambda: sources.fetch_wordpress_updates(CFG["wordpress"]),
                           CFG["wordpress"]["every"]),
     }
 
+    um = CFG["umami"]
+    if not (um["url"] and um["website_id"] and (um["api_key"] or (um["username"] and um["password"]))):
+        if "website" in CFG["pages"]:
+            log.warning("UMAMI_URL/UMAMI_WEBSITE_ID/inloggegevens niet compleet: websitepagina uit")
+        CFG["pages"] = [pg for pg in CFG["pages"] if pg != "website"]
+        del bronnen["website"]
     if not CFG["dry_run"] and not CFG["device"]:
         raise SystemExit("DEVICE_HOST is niet ingesteld (IP-adres van het scherm)")
     if w["lat"] is None or w["lon"] is None:
@@ -199,6 +214,16 @@ def main():
             beelden["nieuwsbrief"] = render.pagina_getal("Nieuwsbrief", "envelop", b.waarde, delta,
                                                          CFG["newsletter_label"], st)
 
+        if "website" in actief:
+            b = bronnen["website"]
+            v = b.waarde
+            extra = None
+            if v:
+                extra = f"{render.nl_getal(v['pageviews'])} weergaven"
+                if v.get("active") is not None:
+                    extra += f" · {v['active']} nu online"
+            beelden["website"] = render.pagina_getal("Website", "wereld", v["visitors"] if v else None, None,
+                                                     "bezoekers vandaag", {**algemeen, **b.status()}, extra=extra)
         if upd and upd["total"]:
             beelden["updates"] = render.pagina_updates(upd, {**algemeen, **bronnen["updates"].status()})
         rotatie = actief + (["updates"] if "updates" in beelden else [])

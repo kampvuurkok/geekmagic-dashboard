@@ -326,3 +326,50 @@ def fetch_wordpress_updates(cfg: dict) -> dict:
     # alleen versies van de kern tellen één keer per site
     res["total"] = len(res["core"]) + len(res["plugins"]) + len(res["themes"])
     return res
+
+
+# ---------------------------------------------------------------- Umami (websitebezoekers)
+
+def _umami_headers(cfg: dict) -> dict:
+    """API-sleutel als die er is, anders inloggen met gebruikersnaam/wachtwoord."""
+    if cfg.get("api_key"):
+        return {"x-umami-api-key": cfg["api_key"], **UA}
+    r = requests.post(
+        cfg["url"].rstrip("/") + "/api/auth/login",
+        json={"username": cfg["username"], "password": cfg["password"]},
+        headers=UA,
+        timeout=15,
+    )
+    r.raise_for_status()
+    return {"Authorization": f"Bearer {r.json()['token']}", **UA}
+
+
+def _waarde(v):
+    """Umami v2 geeft {'value': n, 'prev': m}, v3 geeft gewoon n."""
+    if isinstance(v, dict):
+        return int(v.get("value") or 0)
+    return int(v or 0)
+
+
+def fetch_umami(cfg: dict) -> dict:
+    basis = cfg["url"].rstrip("/") + f"/api/websites/{cfg['website_id']}"
+    kop = _umami_headers(cfg)
+    nu = dt.datetime.now(TZ)
+    middernacht = nu.replace(hour=0, minute=0, second=0, microsecond=0)
+    r = requests.get(
+        basis + "/stats",
+        params={"startAt": int(middernacht.timestamp() * 1000), "endAt": int(nu.timestamp() * 1000)},
+        headers=kop,
+        timeout=15,
+    )
+    r.raise_for_status()
+    s = r.json()
+    actief = None
+    try:
+        a = requests.get(basis + "/active", headers=kop, timeout=15)
+        a.raise_for_status()
+        j = a.json()
+        actief = _waarde(j.get("visitors", j.get("x")) if isinstance(j, dict) else j)
+    except (requests.RequestException, ValueError, TypeError):
+        pass
+    return {"visitors": _waarde(s.get("visitors")), "pageviews": _waarde(s.get("pageviews")), "active": actief}
