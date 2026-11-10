@@ -410,3 +410,60 @@ def fetch_meta(cfg: dict) -> dict:
     if res["facebook"] is None and res["instagram"] is None:
         raise RuntimeError("; ".join(res["errors"]) or "geen gegevens")
     return res
+
+
+# ---------------------------------------------------------------- Google-reviews (Places API New)
+
+def _google_place_id(cfg: dict) -> str:
+    """Place ID uit de instellingen, of eenmalig opzoeken met een zoekterm en bewaren."""
+    import json
+    import os
+
+    if cfg.get("place_id"):
+        return cfg["place_id"]
+    pad = os.path.join(cfg["data_dir"], "google_place.json")
+    try:
+        with open(pad) as f:
+            opgeslagen = json.load(f)
+        if opgeslagen.get("query") == cfg["query"]:
+            return opgeslagen["id"]
+    except (OSError, ValueError, KeyError):
+        pass
+    if not cfg.get("query"):
+        raise RuntimeError("GOOGLE_PLACE_ID of GOOGLE_PLACE_QUERY ontbreekt")
+    # alleen het ID opvragen houdt deze zoekactie in de goedkoopste categorie
+    r = requests.post(
+        "https://places.googleapis.com/v1/places:searchText",
+        json={"textQuery": cfg["query"], "languageCode": "nl"},
+        headers={"X-Goog-Api-Key": cfg["api_key"], "X-Goog-FieldMask": "places.id", **UA},
+        timeout=20,
+    )
+    r.raise_for_status()
+    plaatsen = r.json().get("places") or []
+    if not plaatsen:
+        raise RuntimeError(f"geen Google-plaats gevonden voor '{cfg['query']}'")
+    pid = plaatsen[0]["id"]
+    with open(pad, "w") as f:
+        json.dump({"query": cfg["query"], "id": pid}, f)
+    return pid
+
+
+def fetch_google(cfg: dict) -> dict:
+    pid = _google_place_id(cfg)
+    r = requests.get(
+        f"https://places.googleapis.com/v1/places/{pid}",
+        headers={"X-Goog-Api-Key": cfg["api_key"], "X-Goog-FieldMask": "displayName,rating,userRatingCount", **UA},
+        timeout=20,
+    )
+    if r.status_code >= 400:
+        try:
+            fout = r.json().get("error", {}).get("message", "")
+        except ValueError:
+            fout = r.text[:120]
+        raise RuntimeError(f"{r.status_code}: {fout}")
+    j = r.json()
+    return {
+        "name": (j.get("displayName") or {}).get("text"),
+        "rating": float(j.get("rating") or 0),
+        "count": int(j.get("userRatingCount") or 0),
+    }

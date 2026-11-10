@@ -230,7 +230,17 @@ def icoon_camera(draw, cx, cy, m, kleur=ORANJE):
     draw.rectangle((x + u * 0.26, y - u * 0.27, x + u * 0.38, y - u * 0.22), fill=kleur)
 
 
-ICONEN = {"camera": icoon_camera, "foto": icoon_foto, "duim": icoon_duim, "mensen": icoon_mensen, "envelop": icoon_envelop, "play": icoon_play, "wereld": icoon_wereld}
+def icoon_ster(draw, cx, cy, m, kleur=GEEL):
+    """Vijfpuntige ster."""
+    pts = []
+    for i in range(10):
+        r = (m * 0.42 if i % 2 == 0 else m * 0.18) * S
+        a = -math.pi / 2 + i * math.pi / 5
+        pts.append((cx * S + math.cos(a) * r, (cy + m * 0.03) * S + math.sin(a) * r))
+    draw.polygon(pts, fill=kleur)
+
+
+ICONEN = {"ster": icoon_ster, "camera": icoon_camera, "foto": icoon_foto, "duim": icoon_duim, "mensen": icoon_mensen, "envelop": icoon_envelop, "play": icoon_play, "wereld": icoon_wereld}
 
 
 # ---------- pagina-onderdelen ----------
@@ -347,5 +357,24 @@ def pagina_updates(u, status) -> bytes:
     d.text((40 * S, y * S), "Unraid", font=f_l, fill=ROOD if u.get("os") else GRIJS, anchor="lt")
     d.text((200 * S, y * S), u["os"] if u.get("os") else "actueel", font=f_w,
            fill=ROOD if u.get("os") else GRIJS, anchor="rt")
+    voet(d, status)
+    return naar_jpg(img)
+
+
+def pagina_score(titel, score, aantal, nieuw, status) -> bytes:
+    """Gemiddelde score groot, met aantal reviews en nieuwe van vandaag."""
+    img, d = nieuw_canvas()
+    kop(d, titel, status)
+    icoon_ster(d, 120, 62, 56)
+    tekst = f"{score:.1f}".replace(".", ",") if score else "–"
+    tekst_mid(d, 98, tekst, fit_font(d, tekst, "Bold", 62, 212), TEKST)
+    if aantal is not None:
+        tekst_mid(d, 162, f"{nl_getal(aantal)} reviews", font("Medium", 14), GRIJS)
+    if nieuw is not None:
+        if nieuw > 0:
+            regel, kleur = f"+{nieuw} nieuw vandaag", GROEN
+        else:
+            regel, kleur = "geen nieuwe vandaag", GRIJS
+        tekst_mid(d, 184, regel, font("SemiBold", 14), kleur)
     voet(d, status)
     return naar_jpg(img)

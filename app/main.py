@@ -65,6 +65,14 @@ CFG = {
         "password": env("UMAMI_PASSWORD", ""),
         "every": env("STATS_MINUTES", 15, int) * 60,
     },
+    "google": {
+        "api_key": env("GOOGLE_API_KEY", ""),
+        "place_id": env("GOOGLE_PLACE_ID", ""),
+        "query": env("GOOGLE_PLACE_QUERY", ""),
+        "data_dir": env("DATA_DIR", "/data"),
+        # rating/aantal valt in de Enterprise-categorie (1.000 gratis per maand): standaard elke 2 uur
+        "every": env("GOOGLE_MINUTES", 120, int) * 60,
+    },
     "meta": {
         "token": env("META_PAGE_TOKEN", ""),
         "page_id": env("META_PAGE_ID", ""),
@@ -85,7 +93,7 @@ CFG = {
     },
 }
 
-BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "instagram": "dash_2_instagram.jpg", "facebook": "dash_3_facebook.jpg", "updates": "dash_9_updates.jpg"}
+BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "instagram": "dash_2_instagram.jpg", "facebook": "dash_3_facebook.jpg", "google": "dash_5_google.jpg", "updates": "dash_9_updates.jpg"}
 
 
 class State:
@@ -159,6 +167,7 @@ def main():
         "weer": Bron("weer", lambda: sources.fetch_weather(w["lat"], w["lon"]), w["every"]),
         "regen": Bron("regen", lambda: sources.fetch_rain(w["lat"], w["lon"]), w["rain_every"]),
         "nieuwsbrief": Bron("nieuwsbrief", lambda: sources.fetch_phplist(p), p["every"]),
+        "google": Bron("google", lambda: sources.fetch_google(CFG["google"]), CFG["google"]["every"]),
         "meta": Bron("meta", lambda: sources.fetch_meta(CFG["meta"]), CFG["meta"]["every"]),
         "website": Bron("website", lambda: sources.fetch_umami(CFG["umami"]), CFG["umami"]["every"]),
         "updates": Bron("updates", lambda: sources.fetch_unraid_updates(CFG["unraid"]), CFG["unraid"]["every"]),
@@ -166,6 +175,12 @@ def main():
                           CFG["wordpress"]["every"]),
     }
 
+    go = CFG["google"]
+    if not (go["api_key"] and (go["place_id"] or go["query"])):
+        if "google" in CFG["pages"]:
+            log.warning("GOOGLE_API_KEY en GOOGLE_PLACE_ID/GOOGLE_PLACE_QUERY nodig: Google-pagina uit")
+        CFG["pages"] = [pg for pg in CFG["pages"] if pg != "google"]
+        del bronnen["google"]
     me = CFG["meta"]
     if not (me["token"] and me["page_id"]):
         if {"instagram", "facebook"} & set(CFG["pages"]):
@@ -238,6 +253,15 @@ def main():
                     delta = state.delta(soort, n, b.bijgewerkt.date().isoformat())
                 beelden[soort] = render.pagina_getal(titel, icoon, n, delta, "volgers",
                                                      {**algemeen, **b.status()}, icoonkleur=kleur)
+        if "google" in actief:
+            b = bronnen["google"]
+            g = b.waarde
+            nieuw = None
+            if g and b.bijgewerkt:
+                nieuw = max(0, state.delta("google_reviews", g["count"], b.bijgewerkt.date().isoformat()))
+            beelden["google"] = render.pagina_score("Google", g["rating"] if g else None,
+                                                    g["count"] if g else None, nieuw,
+                                                    {**algemeen, **b.status()})
         if "website" in actief:
             b = bronnen["website"]
             v = b.waarde
