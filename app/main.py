@@ -94,6 +94,11 @@ CFG = {
         "labels": dict(x.split("=", 1) for x in env("WP_LABELS", "").split(",") if "=" in x),
         "every": env("WORDPRESS_MINUTES", 240, int) * 60,
     },
+    "recepten": {
+        "url": env("RECEPTEN_URL", ""),
+        "token": env("RECEPTEN_TOKEN", ""),
+        "every": env("RECEPTEN_MINUTES", 15, int) * 60,
+    },
 }
 
 def kort(regel: str) -> str:
@@ -112,7 +117,7 @@ def bestandsnaam(pg: str) -> str:
     return f"dash_9_{slug[:18]}.jpg"
 
 
-BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "instagram": "dash_2_instagram.jpg", "facebook": "dash_3_facebook.jpg", "google": "dash_5_google.jpg", "updates": "dash_9_updates.jpg"}
+BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "instagram": "dash_2_instagram.jpg", "facebook": "dash_3_facebook.jpg", "google": "dash_5_google.jpg", "updates": "dash_9_updates.jpg", "recepten": "dash_8_recepten.jpg"}
 
 
 class State:
@@ -196,6 +201,7 @@ def main():
         "updates": Bron("updates", lambda: sources.fetch_unraid_updates(CFG["unraid"]), CFG["unraid"]["every"]),
         "wordpress": Bron("wordpress", lambda: sources.fetch_wordpress_updates(CFG["wordpress"]),
                           CFG["wordpress"]["every"]),
+        "recepten": Bron("recepten", lambda: sources.fetch_recepten(CFG["recepten"]), CFG["recepten"]["every"]),
     }
 
     go = CFG["google"]
@@ -223,8 +229,10 @@ def main():
             log.warning("WEATHER_LAT/WEATHER_LON niet ingesteld: weerpagina uit")
         CFG["pages"] = [pg for pg in CFG["pages"] if pg != "weer"]
         del bronnen["weer"], bronnen["regen"]
+    if not (CFG["recepten"]["url"] and CFG["recepten"]["token"]):
+        del bronnen["recepten"]
     tv = None if CFG["dry_run"] else SmallTV(CFG["device"], CFG["picture_theme"])
-    actief = [pg for pg in CFG["pages"] if pg in BESTANDEN and pg != "updates"]
+    actief = [pg for pg in CFG["pages"] if pg in BESTANDEN and pg not in ("updates", "recepten")]
     updates_aan = "updates" in CFG["pages"]
     if not updates_aan:
         del bronnen["updates"]
@@ -260,6 +268,7 @@ def main():
             upd = dict(upd or {"docker": [], "compose": [], "plugins": [], "os": None, "total": 0})
             upd["wp"] = wp
             upd["total"] = (upd.get("total") or 0) + (wp["total"] if wp else 0)
+        rc = bronnen["recepten"].waarde if "recepten" in bronnen else None
         algemeen = {"drop": bool(regen and regen["drop"]),
                     "updates": bool(upd and upd["total"]),
                     "updates_urgent": bool(upd and (upd["os"] or (wp and wp["core"])))}
@@ -337,6 +346,20 @@ def main():
                     beelden[pg] = render.pagina_lijst(site, regels, st,
                                                       onderkop=f"{n} update{'s' if n != 1 else ''} klaar")
                     tegels.append(pg)
+        # receptsuggesties: alleen een tegel als er voorstellen wachten
+        if rc and rc.get("open"):
+            regels = []
+            for it in rc.get("items", []):
+                teken = "+" if it.get("actie") == "add" else "−"
+                kleur = render.ROOD if it.get("groep") == "Allergenen" else render.ORANJE
+                regels.append((f"{it.get('recept', '?')}: {teken} {it.get('label', '?')}", kleur))
+            n = rc["open"]
+            onder = f"{n} voorstel{'len' if n != 1 else ''} van bezoekers" if not rc.get("allergenen") else f"{n} voorstel{'len' if n != 1 else ''}"
+            if rc.get("allergenen"):
+                onder += f" · {rc['allergenen']} allergeen"
+            beelden["recepten"] = render.pagina_lijst("Recepten", regels, {**algemeen, **bronnen["recepten"].status()},
+                                                      onderkop=onder)
+            tegels.append("recepten")
         rotatie = actief + tegels
         if not rotatie:
             rotatie = list(beelden) or ["weer"]
