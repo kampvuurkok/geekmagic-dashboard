@@ -168,7 +168,8 @@ class Bron:
         except Exception as e:  # noqa: BLE001 – een kapotte bron mag de rest niet stoppen
             self.fout = str(e)[:200]
             log.warning("%s ophalen mislukt: %s", self.naam, e)
-            self.volgende = nu + min(self.interval, 120)
+            # nog nooit gelukt (bv. netwerk nog niet klaar na herstart): snel opnieuw
+            self.volgende = nu + (30 if self.waarde is None else min(self.interval, 120))
             return False
 
     def status(self):
