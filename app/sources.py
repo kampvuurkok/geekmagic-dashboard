@@ -387,12 +387,20 @@ def fetch_meta(cfg: dict) -> dict:
     res = {"facebook": None, "instagram": None, "errors": []}
 
     def get(pad, velden):
-        r = requests.get(f"{basis}/{pad}", params={"fields": velden, "access_token": cfg["token"]},
-                         headers=UA, timeout=20)
-        j = r.json()
+        try:
+            r = requests.get(f"{basis}/{pad}", params={"fields": velden, "access_token": cfg["token"]},
+                             headers=UA, timeout=20)
+            j = r.json()
+        except (requests.RequestException, ValueError) as e:
+            # requests zet de volledige URL (met token) in de foutmelding: nooit doorgeven
+            raise RuntimeError(f"verbinding met Meta mislukt ({type(e).__name__})") from None
         if "error" in j:
+            fout = j["error"]
+            if fout.get("code") == 190:
+                raise RuntimeError("pagina-token verlopen of ongeldig: maak een nieuw token aan "
+                                   "(zie README, Meta) en zet het in META_PAGE_TOKEN")
             # nooit de token loggen: alleen type en bericht
-            raise RuntimeError(f"{j['error'].get('type')}: {j['error'].get('message')}")
+            raise RuntimeError(f"{fout.get('type')}: {fout.get('message')}")
         return j
 
     try:
