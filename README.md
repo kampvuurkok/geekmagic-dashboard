@@ -11,6 +11,8 @@ Dashboard voor een **GeekMagic SmallTV-PRO** (standaardfirmware). Een kleine con
 - **Website** – bezoekers en weergaven van vandaag, en wie er nu online is (Umami)
 - **Updatetegels** – alleen als er iets klaarstaat: één tegel **Unraid** en één tegel per **WordPress-site** (met de sitenaam als titel), met per regel wat er bijgewerkt moet worden. Bronnen: dockers (Unraid API), compose-containers (Compose Manager; vastgepinde tellen niet mee), plugins, Unraid zelf en WordPress-sites (kern, plugins, thema's via SSH + WP-CLI)
 
+- **Recepten** – alleen als bezoekers labels hebben voorgesteld die boven de drempel uitkomen (plugin *Kampvuurkok receptsuggesties*), met per regel recept en voorstel; allergenen in rood
+
 Op elke pagina:
 - een **stipje** als er updates klaarstaan (rood bij een update van Unraid of de WordPress-kern)
 - een **druppeltje** als er binnen een uur regen komt

@@ -513,3 +513,14 @@ def fetch_google(cfg: dict) -> dict:
         "rating": float(j.get("rating") or 0),
         "count": int(j.get("userRatingCount") or 0),
     }
+
+
+# ---------------------------------------------------------------- Receptsuggesties (WordPress-plugin)
+
+def fetch_recepten(cfg: dict) -> dict:
+    """Voorstellen van bezoekers die boven de drempel uitkomen (plugin Kampvuurkok receptsuggesties)."""
+    r = requests.get(cfg["url"], headers={**UA, "X-KVK-Token": cfg["token"]}, timeout=20)
+    r.raise_for_status()
+    j = r.json()
+    return {"open": int(j.get("open", 0)), "allergenen": int(j.get("allergenen", 0)),
+            "items": j.get("items", [])[:8]}
