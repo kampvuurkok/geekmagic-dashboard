@@ -9,7 +9,7 @@ Dashboard voor een **GeekMagic SmallTV-PRO** (standaardfirmware). Een kleine con
 - **Google** – gemiddelde score, aantal reviews en hoeveel er vandaag bij zijn gekomen (Places API New)
 - **Nieuwsbrief** – aantal bevestigde leden van een phpList-lijst, met de groei van vandaag
 - **Website** – bezoekers en weergaven van vandaag, en wie er nu online is (Umami)
-- **Updates** – alleen als er iets klaarstaat: dockers (Unraid API), compose-containers (Compose Manager; vastgepinde tellen niet mee), plugins, Unraid zelf en WordPress-sites (kern, plugins, thema's via SSH + WP-CLI)
+- **Updatetegels** – alleen als er iets klaarstaat: één tegel **Unraid** en één tegel per **WordPress-site** (met de sitenaam als titel), met per regel wat er bijgewerkt moet worden. Bronnen: dockers (Unraid API), compose-containers (Compose Manager; vastgepinde tellen niet mee), plugins, Unraid zelf en WordPress-sites (kern, plugins, thema's via SSH + WP-CLI)
 
 Op elke pagina:
 - een **stipje** als er updates klaarstaan (rood bij een update van Unraid of de WordPress-kern)

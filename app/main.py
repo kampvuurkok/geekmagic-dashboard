@@ -96,6 +96,22 @@ CFG = {
     },
 }
 
+def kort(regel: str) -> str:
+    """'naam 1.0 → 1.1' wordt 'naam → 1.1' (past beter op het schermpje)."""
+    delen = regel.split(" ")
+    if len(delen) == 4 and delen[2] == "→":
+        return f"{delen[0]} → {delen[3]}"
+    return regel
+
+
+def bestandsnaam(pg: str) -> str:
+    """Vaste namen voor de vaste pagina's, korte afgeleide namen voor de updatetegels."""
+    if pg in BESTANDEN:
+        return BESTANDEN[pg]
+    slug = "".join(c if c.isalnum() else "-" for c in pg.split(":", 1)[-1].lower()).strip("-")
+    return f"dash_9_{slug[:18]}.jpg"
+
+
 BESTANDEN = {"weer": "dash_1_weer.jpg", "nieuwsbrief": "dash_4_nieuwsbrief.jpg", "website": "dash_6_website.jpg", "instagram": "dash_2_instagram.jpg", "facebook": "dash_3_facebook.jpg", "google": "dash_5_google.jpg", "updates": "dash_9_updates.jpg"}
 
 
@@ -289,28 +305,59 @@ def main():
                     extra += f" · {v['active']} nu online"
             beelden["website"] = render.pagina_getal("Website", "wereld", v["visitors"] if v else None, None,
                                                      "bezoekers vandaag", {**algemeen, **b.status()}, extra=extra)
-        if upd and upd["total"]:
-            beelden["updates"] = render.pagina_updates(upd, {**algemeen, **bronnen["updates"].status()})
-        rotatie = actief + (["updates"] if "updates" in beelden else [])
+        # updatetegels: één voor Unraid, en één per WordPress-site met updates
+        tegels = []
+        u = bronnen["updates"].waarde if "updates" in bronnen else None
+        if u and u.get("total"):
+            regels = []
+            if u.get("os"):
+                regels.append((f"Unraid → {u['os']}", render.ROOD))
+            regels += [(f"Docker: {n}", render.ORANJE) for n in u.get("docker", [])]
+            regels += [(f"Compose: {n.split('/')[-1]}", render.ORANJE) for n in u.get("compose", [])]
+            regels += [(f"Plugin: {kort(n)}", render.ORANJE) for n in u.get("plugins", [])]
+            st = {**algemeen, **bronnen["updates"].status()}
+            n = u["total"]
+            beelden["upd:unraid"] = render.pagina_lijst("Unraid", regels, st,
+                                                        onderkop=f"{n} update{'s' if n != 1 else ''} klaar")
+            tegels.append("upd:unraid")
+        if wp:
+            st = {**algemeen, **bronnen["wordpress"].status()}
+            for site, info in sorted((wp.get("sites") or {}).items()):
+                regels = []
+                if info.get("core"):
+                    regels.append((f"WordPress → {info['core']}", render.ROOD))
+                regels += [(kort(p), render.ORANJE) for p in info.get("plugins", [])]
+                regels += [(f"Thema: {kort(t)}", render.ORANJE) for t in info.get("themes", [])]
+                if info.get("error"):
+                    regels.append(("controle mislukt", render.ROOD))
+                if regels:
+                    n = len(regels)
+                    pg = f"upd:{site}"
+                    beelden[pg] = render.pagina_lijst(site, regels, st,
+                                                      onderkop=f"{n} update{'s' if n != 1 else ''} klaar")
+                    tegels.append(pg)
+        rotatie = actief + tegels
+        if not rotatie:
+            rotatie = list(beelden) or ["weer"]
 
         try:
             if tv and not opgeruimd:
                 tv.select_picture_app()
-                tv.cleanup({BESTANDEN[pg] for pg in beelden})
+                tv.cleanup({bestandsnaam(pg) for pg in beelden})
                 geupload.clear()
                 opgeruimd = True
 
             # pagina's die niet meer nodig zijn (bv. updates = 0) van het scherm halen,
             # anders bladert de firmware er zelf nog langs
-            for pg, naam in BESTANDEN.items():
-                if pg not in beelden and naam in geupload:
-                    if tv:
-                        tv.delete(naam)
-                        log.info("%s van het scherm gehaald", naam)
-                    del geupload[naam]
+            nodig = {bestandsnaam(pg) for pg in beelden}
+            for naam in [n for n in geupload if n not in nodig]:
+                if tv:
+                    tv.delete(naam)
+                    log.info("%s van het scherm gehaald", naam)
+                del geupload[naam]
 
             for pg, data in beelden.items():
-                naam = BESTANDEN[pg]
+                naam = bestandsnaam(pg)
                 h = hashlib.sha1(data).hexdigest()
                 if geupload.get(naam) == h:
                     continue
@@ -324,7 +371,7 @@ def main():
 
             pagina = rotatie[index % len(rotatie)]
             if tv:
-                tv.show(BESTANDEN[pagina])
+                tv.show(bestandsnaam(pagina))
             index += 1
         except ConnectionError as e:
             log.warning("scherm niet bereikbaar: %s – opnieuw over 30 s", e)

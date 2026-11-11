@@ -378,3 +378,37 @@ def pagina_score(titel, score, aantal, nieuw, status) -> bytes:
         tekst_mid(d, 184, regel, font("SemiBold", 14), kleur)
     voet(d, status)
     return naar_jpg(img)
+
+
+def _inkorten(draw, tekst, f, max_breedte):
+    """Kort tekst af met … zodat hij binnen max_breedte (240-schaal) past."""
+    if draw.textlength(tekst, font=f) <= max_breedte * S:
+        return tekst
+    while tekst and draw.textlength(tekst + "…", font=f) > max_breedte * S:
+        tekst = tekst[:-1]
+    return tekst + "…"
+
+
+def pagina_lijst(titel, regels, status, onderkop=None) -> bytes:
+    """Tegel met een titel en een lijst regels: [(tekst, kleur), ...].
+
+    Gebruikt voor de updatetegels per website en voor Unraid.
+    """
+    img, d = nieuw_canvas()
+    kop(d, titel, status)
+    y = 36
+    if onderkop:
+        d.text((14 * S, y * S), onderkop, font=font("Medium", 12), fill=GRIJS, anchor="lt")
+        y += 22
+    f = font("Medium", 13)
+    max_regels = 8 if onderkop else 9
+    toon = regels if len(regels) <= max_regels else regels[: max_regels - 1]
+    for tekst, kleur in toon:
+        d.ellipse((14 * S, (y + 5) * S, 19 * S, (y + 10) * S), fill=kleur)
+        d.text((26 * S, y * S), _inkorten(d, tekst, f, 202), font=f, fill=TEKST if kleur != ROOD else ROOD, anchor="lt")
+        y += 19
+    if len(regels) > len(toon):
+        d.text((26 * S, y * S), f"+{len(regels) - len(toon)} meer (zie statuspagina)", font=font("Medium", 12),
+               fill=GRIJS, anchor="lt")
+    voet(d, status)
+    return naar_jpg(img)
