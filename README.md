@@ -56,6 +56,14 @@ Het dashboard telt wat Unraid en Compose Manager zelf gevonden hebben. Staat hun
   `ssh-keygen -t ed25519 -N "" -f /mnt/user/appdata/geekmagic-dashboard/data/ssh/id_ed25519`
   `ssh-copy-id -i /mnt/user/appdata/geekmagic-dashboard/data/ssh/id_ed25519.pub gebruiker@host`
 
+## Statuspagina
+
+Op `http://<unraid-ip>:8099` staat een pagina met de details achter het schermpje: de laatste waarde per bron, alle updates met namen (per WordPress-site, per container, per plugin) en eventuele fouten. Ververst elke minuut. `/json` geeft hetzelfde als JSON. Alleen bedoeld voor je eigen netwerk.
+
+## WordPress-sites
+
+Met `WP_PATHS=auto` zoekt het dashboard bij elke check zelf alle WordPress-installaties in de SSH-thuismap (tot vier mappen diep; back-ups en `wp-content` worden overgeslagen). Nieuwe sites doen vanzelf mee, verwijderde verdwijnen vanzelf. Uitsluiten met `WP_EXCLUDE=site.nl/staging`.
+
 ## Controleren
 
 ```

@@ -254,30 +254,59 @@ def fetch_unraid_updates(cfg: dict) -> dict:
 
 # ---------------------------------------------------------------- WordPress-updates
 
+def _wp_label(pad: str, home: str, labels: dict) -> str:
+    """Leesbare naam voor een WordPress-map.
+
+    httpdocs -> kampvuurkok.nl, httpdocs/staging -> kampvuurkok.nl/staging,
+    molletag.nl -> molletag.nl, stegehuis.org/httpdocs -> stegehuis.org
+    """
+    pad = pad.strip().lstrip("./").rstrip("/") or "."
+    if pad in labels:
+        return labels[pad]
+    delen = [d for d in pad.split("/") if d]
+    if not delen or delen[0] in ("httpdocs", "public_html"):
+        basis, rest = home, delen[1:]
+    else:
+        basis, rest = delen[0], delen[1:]
+    rest = [d for d in rest if d not in ("httpdocs", "public_html")]
+    return basis + ("/" + "/".join(rest) if rest else "")
+
+
 def fetch_wordpress_updates(cfg: dict) -> dict:
     """Vraagt via SSH + WP-CLI per site de beschikbare updates op.
 
-    Eén SSH-verbinding voor alle sites. Resultaat:
-    {"core": ["site 6.8 → 6.9"], "plugins": [...], "themes": [...], "errors": [...], "total": n}
+    WP_PATHS=auto (standaard): zoekt bij elke check zelf alle WordPress-installaties
+    in de SSH-thuismap (tot 4 mappen diep), zodat nieuwe sites vanzelf meedoen en
+    verwijderde sites vanzelf verdwijnen. WP_EXCLUDE sluit sites uit (naam of map).
+
+    Resultaat: {"sites": {naam: {...}}, "core": [...], "plugins": [...], "themes": [...],
+                "errors": [...], "total": n}
     """
     import json
     import shlex
     import subprocess
 
-    res = {"core": [], "plugins": [], "themes": [], "errors": []}
-    paden = [p.strip() for p in cfg["paths"].split(",") if p.strip()]
-    stukken = []
-    for pad in paden:
-        q = shlex.quote(pad)
-        # --skip-plugins/--skip-themes: plugins niet inladen, zodat een plugin die een nieuwere
-        # PHP vraagt dan de PHP van de commandoregel de check niet laat crashen.
-        wp = f"wp --path={q} --skip-plugins --skip-themes"
-        stukken.append(
-            f"echo; echo '@@SITE {pad}'; "
-            f"echo '@@core'; {wp} core check-update --format=json 2>&1; "
-            f"echo; echo '@@plugins'; {wp} plugin list --update=available --fields=name,version,update_version --format=json 2>&1; "
-            f"echo; echo '@@themes'; {wp} theme list --update=available --fields=name,version,update_version --format=json 2>&1; echo"
+    res = {"sites": {}, "core": [], "plugins": [], "themes": [], "errors": []}
+    # --skip-plugins/--skip-themes: plugins niet inladen, zodat een plugin die een nieuwere
+    # PHP vraagt dan de PHP van de commandoregel de check niet laat crashen.
+    per_site = (
+        'wp="wp --path=$d --skip-plugins --skip-themes"; '
+        'echo; echo "@@SITE $d"; '
+        'echo "@@core"; $wp core check-update --format=json 2>&1; '
+        'echo; echo "@@plugins"; $wp plugin list --update=available --fields=name,version,update_version --format=json 2>&1; '
+        'echo; echo "@@themes"; $wp theme list --update=available --fields=name,version,update_version --format=json 2>&1; echo'
+    )
+    if cfg["paths"].strip().lower() in ("", "auto"):
+        zoek = (
+            "find . -maxdepth 4 -path '*/wp-includes/version.php' "
+            "-not -path './wordpress-backups/*' -not -path './tmp/*' -not -path './logs/*' "
+            "-not -path '*/wp-content/*' 2>/dev/null | sed 's#/wp-includes/version.php$##' | sort"
         )
+        lijst = f"$({zoek})"
+    else:
+        lijst = " ".join(shlex.quote(p.strip()) for p in cfg["paths"].split(",") if p.strip())
+    script = f'echo "@@HOME $(basename "$PWD")"; for d in {lijst}; do {per_site}; done'
+
     opdracht = [
         "ssh", "-i", cfg["key"], "-p", str(cfg["port"]),
         "-o", "BatchMode=yes",
@@ -286,34 +315,44 @@ def fetch_wordpress_updates(cfg: dict) -> dict:
         "-o", "ConnectTimeout=20",
         "-o", "LogLevel=ERROR",
         f"{cfg['user']}@{cfg['host']}",
-        "; ".join(stukken),
+        script,
     ]
-    p = subprocess.run(opdracht, capture_output=True, text=True, timeout=180)
-    if p.returncode != 0 and "@@SITE" not in p.stdout:
+    p = subprocess.run(opdracht, capture_output=True, text=True, timeout=300)
+    if p.returncode != 0 and "@@HOME" not in p.stdout:
         raise RuntimeError(f"ssh mislukt ({p.returncode}): {p.stderr.strip()[:200]}")
 
-    site, soort, buffer = None, None, []
+    uitsluiten = {x.strip().lstrip("./").rstrip("/") for x in cfg.get("exclude", "").split(",") if x.strip()}
+    home, site, soort, buffer = "", None, None, []
 
     def verwerk():
         if not site or not soort:
             return
+        label = _wp_label(site, home, cfg["labels"])
+        if label in uitsluiten or site.lstrip("./") in uitsluiten:
+            return
+        info = res["sites"].setdefault(label, {"path": site.lstrip("./") or ".", "core": None,
+                                               "plugins": [], "themes": [], "error": None})
         tekst = "\n".join(buffer).strip()
-        label = site.rstrip("/").split("/")[-1]
-        label = cfg["labels"].get(site, label)
         try:
             data = json.loads(tekst or "[]")
         except ValueError:
+            info["error"] = tekst[:160]
             res["errors"].append(f"{label} {soort}: {tekst[:120]}")
             return
         for item in data:
             if soort == "core":
+                info["core"] = item.get("version")
                 res["core"].append(f"{label} → {item.get('version')}")
             else:
-                res[soort].append(f"{label}: {item.get('name')} {item.get('version')} → {item.get('update_version')}")
+                regel = f"{item.get('name')} {item.get('version')} → {item.get('update_version')}"
+                info[soort].append(regel)
+                res[soort].append(f"{label}: {regel}")
 
     for regel in p.stdout.splitlines():
         regel = regel.rstrip()
-        if regel.startswith("@@SITE "):
+        if regel.startswith("@@HOME "):
+            home = regel[7:]
+        elif regel.startswith("@@SITE "):
             verwerk()
             site, soort, buffer = regel[7:], None, []
         elif regel in ("@@core", "@@plugins", "@@themes"):
@@ -323,7 +362,6 @@ def fetch_wordpress_updates(cfg: dict) -> dict:
             buffer.append(regel)
     verwerk()
 
-    # alleen versies van de kern tellen één keer per site
     res["total"] = len(res["core"]) + len(res["plugins"]) + len(res["themes"])
     return res
 

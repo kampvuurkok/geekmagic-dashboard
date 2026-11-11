@@ -6,6 +6,9 @@ services:
     container_name: geekmagic-dashboard
     restart: unless-stopped
     env_file: .env
+    # statuspagina met details (alleen lezen, binnen je eigen netwerk): http://<unraid>:8099
+    ports:
+      - "8099:8080"
     # root zonder extra rechten: kan alleen bestanden van root lezen (o.a. /boot), verder niets
     user: "0:0"
     cap_drop: [ALL]

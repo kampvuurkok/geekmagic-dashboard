@@ -11,6 +11,7 @@ import time
 
 import render
 import sources
+import status
 from device import SmallTV
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -30,6 +31,7 @@ CFG = {
     "dry_run": env("DRY_RUN", "0") == "1",
     "data_dir": env("DATA_DIR", "/data"),
     "newsletter_label": env("NEWSLETTER_LABEL", "leden nieuwsbrief"),
+    "status_port": env("STATUS_PORT", 8080, int),
     "pages": [p.strip() for p in env("PAGES", "weer,nieuwsbrief").split(",") if p.strip()],
     "weather": {
         "name": env("WEATHER_NAME", "Weer"),
@@ -87,7 +89,8 @@ CFG = {
         "key": env("WP_SSH_KEY", "/data/ssh/id_ed25519"),
         "known_hosts": env("WP_SSH_KNOWN_HOSTS", "/data/ssh/known_hosts"),
         # komma-gescheiden paden t.o.v. de SSH-thuismap, bv. "httpdocs,stegehuis.org"
-        "paths": env("WP_PATHS", "httpdocs"),
+        "paths": env("WP_PATHS", "auto"),
+        "exclude": env("WP_EXCLUDE", ""),
         "labels": dict(x.split("=", 1) for x in env("WP_LABELS", "").split(",") if "=" in x),
         "every": env("WORDPRESS_MINUTES", 240, int) * 60,
     },
@@ -134,6 +137,7 @@ class Bron:
         self.waarde = None
         self.bijgewerkt = None  # datetime van laatste succes
         self.volgende = 0.0
+        self.fout = None
 
     def misschien_ophalen(self, nu):
         if nu < self.volgende:
@@ -142,9 +146,11 @@ class Bron:
             self.waarde = self.functie()
             self.bijgewerkt = dt.datetime.now(sources.TZ)
             self.volgende = nu + self.interval
+            self.fout = None
             log.info("%s bijgewerkt: %s", self.naam, self.waarde)
             return True
         except Exception as e:  # noqa: BLE001 – een kapotte bron mag de rest niet stoppen
+            self.fout = str(e)[:200]
             log.warning("%s ophalen mislukt: %s", self.naam, e)
             self.volgende = nu + min(self.interval, 120)
             return False
@@ -210,6 +216,10 @@ def main():
     if not actief:
         raise SystemExit("PAGES bevat geen bekende pagina's")
     log.info("start; pagina's: %s; scherm: %s", actief, "DRY_RUN" if tv is None else CFG["device"])
+    if CFG["status_port"]:
+        status.start(CFG["status_port"])
+        status.zet("gestart", dt.datetime.now(sources.TZ).strftime("%d-%m %H:%M"))
+        log.info("statuspagina op poort %s", CFG["status_port"])
 
     geupload = {}  # bestandsnaam -> hash van wat er op het scherm staat
     opgeruimd = False
@@ -219,6 +229,13 @@ def main():
         for b in bronnen.values():
             b.misschien_ophalen(nu)
 
+        status.zet("bronnen", {
+            n: {"waarde": b.waarde, "bijgewerkt": f"{b.bijgewerkt:%d-%m %H:%M}" if b.bijgewerkt else None,
+                "stale": b.status()["stale"], "fout": b.fout}
+            for n, b in bronnen.items()
+        })
+        status.zet("updates", bronnen["updates"].waarde if "updates" in bronnen else None)
+        status.zet("wordpress", bronnen["wordpress"].waarde if "wordpress" in bronnen else None)
         regen = bronnen["regen"].waarde if "regen" in bronnen else None
         upd = bronnen["updates"].waarde if updates_aan else None
         wp = bronnen["wordpress"].waarde if "wordpress" in bronnen else None
