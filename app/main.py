@@ -9,6 +9,7 @@ import logging
 import os
 import time
 
+import aws
 import render
 import sources
 import status
@@ -93,6 +94,20 @@ CFG = {
         "exclude": env("WP_EXCLUDE", ""),
         "labels": dict(x.split("=", 1) for x in env("WP_LABELS", "").split(",") if "=" in x),
         "every": env("WORDPRESS_MINUTES", 240, int) * 60,
+    },
+    "aws": {
+        "access_key": env("AWS_ACCESS_KEY_ID", ""),
+        "secret_key": env("AWS_SECRET_ACCESS_KEY", ""),
+        "session_token": env("AWS_SESSION_TOKEN", ""),
+        # regio's waar SES gebruikt wordt (Stockholm = eu-north-1)
+        "regions": [r.strip() for r in env("AWS_SES_REGIONS", "eu-north-1").split(",") if r.strip()],
+        "exclude": [x.strip() for x in env("AWS_SES_EXCLUDE", "").split(",") if x.strip()],
+        "emails": env("AWS_SES_EMAILS", "0") == "1",  # ook losse e-mailadressen controleren
+        # optioneel: SQS-wachtrij waar een EventBridge-regel de AWS Health-meldingen in zet
+        "queue_url": env("AWS_HEALTH_QUEUE_URL", ""),
+        "health_days": env("AWS_HEALTH_DAYS", 7, int),
+        "data_dir": env("DATA_DIR", "/data"),
+        "every": env("AWS_MINUTES", 60, int) * 60,
     },
 }
 
@@ -196,6 +211,7 @@ def main():
         "updates": Bron("updates", lambda: sources.fetch_unraid_updates(CFG["unraid"]), CFG["unraid"]["every"]),
         "wordpress": Bron("wordpress", lambda: sources.fetch_wordpress_updates(CFG["wordpress"]),
                           CFG["wordpress"]["every"]),
+        "aws": Bron("aws", lambda: aws.fetch_aws(CFG["aws"]), CFG["aws"]["every"]),
     }
 
     go = CFG["google"]
@@ -230,6 +246,11 @@ def main():
         del bronnen["updates"]
     if not updates_aan or not (CFG["wordpress"]["host"] and CFG["wordpress"]["user"]):
         del bronnen["wordpress"]
+    ak = CFG["aws"]
+    if "aws" not in CFG["pages"] or not (ak["access_key"] and ak["secret_key"]):
+        if "aws" in CFG["pages"]:
+            log.warning("AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY niet ingesteld: Amazon-tegel uit")
+        del bronnen["aws"]
     if not actief:
         raise SystemExit("PAGES bevat geen bekende pagina's")
     log.info("start; pagina's: %s; scherm: %s", actief, "DRY_RUN" if tv is None else CFG["device"])
@@ -253,6 +274,7 @@ def main():
         })
         status.zet("updates", bronnen["updates"].waarde if "updates" in bronnen else None)
         status.zet("wordpress", bronnen["wordpress"].waarde if "wordpress" in bronnen else None)
+        status.zet("aws", bronnen["aws"].waarde if "aws" in bronnen else None)
         regen = bronnen["regen"].waarde if "regen" in bronnen else None
         upd = bronnen["updates"].waarde if updates_aan else None
         wp = bronnen["wordpress"].waarde if "wordpress" in bronnen else None
@@ -263,6 +285,11 @@ def main():
         algemeen = {"drop": bool(regen and regen["drop"]),
                     "updates": bool(upd and upd["total"]),
                     "updates_urgent": bool(upd and (upd["os"] or (wp and wp["core"])))}
+        am = bronnen["aws"].waarde if "aws" in bronnen else None
+        if am and am["total"]:
+            # Amazon-problemen tellen mee voor het stipje (rood als het ernstig is)
+            algemeen["updates"] = True
+            algemeen["updates_urgent"] = algemeen["updates_urgent"] or am["urgent"]
 
         beelden = {}
         if "weer" in actief:
@@ -337,6 +364,13 @@ def main():
                     beelden[pg] = render.pagina_lijst(site, regels, st,
                                                       onderkop=f"{n} update{'s' if n != 1 else ''} klaar")
                     tegels.append(pg)
+        # Amazon-tegel: alleen als er een probleem is
+        if am and am["total"]:
+            regels = [(t, render.ROOD if e else render.ORANJE) for t, e in am["problems"]]
+            n = am["total"]
+            beelden["upd:amazon"] = render.pagina_lijst("Amazon", regels, {**algemeen, **bronnen["aws"].status()},
+                                                        onderkop=f"{n} probleem" + ("en" if n != 1 else ""))
+            tegels.insert(0, "upd:amazon")
         rotatie = actief + tegels
         if not rotatie:
             rotatie = list(beelden) or ["weer"]

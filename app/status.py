@@ -8,7 +8,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-STATUS = {"bronnen": {}, "updates": None, "wordpress": None, "gestart": None}
+STATUS = {"bronnen": {}, "updates": None, "wordpress": None, "aws": None, "gestart": None}
 _lock = threading.Lock()
 
 
@@ -36,7 +36,7 @@ def _pagina():
         waarde = b.get("waarde")
         if isinstance(waarde, dict):
             waarde = ", ".join(f"{k}: {v}" for k, v in waarde.items()
-                               if k not in ("sites", "errors", "docker", "compose", "plugins", "core", "themes"))
+                               if k not in ("sites", "errors", "docker", "compose", "plugins", "core", "themes", "problems", "ses", "health"))
         rijen.append(
             f'<tr class="{klasse}"><td>{_e(naam)}</td><td>{_e(waarde if waarde is not None else "–")}</td>'
             f'<td>{_e(b.get("bijgewerkt") or "nog niet")}</td><td>{_e(b.get("fout") or "")}</td></tr>'
@@ -69,6 +69,26 @@ def _pagina():
         sites.append(f'<div class="site"><h3>{_e(naam)} <small>{_e(info.get("path"))}</small></h3>{inhoud}</div>')
     wordpress = "<h2>WordPress</h2>" + ("".join(sites) if sites else "<p>nog geen gegevens</p>")
 
+    a = s.get("aws")
+    if a is None:
+        amazon = ""
+    else:
+        delen = [f"<h3>Problemen</h3>{_lijst([p[0] for p in a.get('problems') or []], 'geen problemen')}"]
+        for regio, d in (a.get("ses") or {}).items():
+            ids = "".join(
+                f"<li>{_e(n)}: verificatie {_e(i.get('verificatie'))}, DKIM {_e(i.get('dkim'))}"
+                + (f", MAIL FROM {_e(i.get('mail_from'))} {_e(i.get('mail_from_status'))}" if i.get("mail_from") else "")
+                + "</li>" for n, i in d.get("identiteiten", {}).items())
+            delen.append(f"<h3>SES {_e(regio)}</h3><p>verzenden: {_e(d.get('verzenden'))} · account: "
+                         f"{_e(d.get('account'))} · productie: {_e(d.get('productie'))}</p><ul>{ids}</ul>")
+        for arn, m in (a.get("health") or {}).items():
+            delen.append(f'<div class="site"><h3>{_e(m.get("dienst"))} – {_e(m.get("code"))} '
+                         f'<small>{_e(m.get("regio"))} · {_e(m.get("begin"))} · {_e(m.get("status"))}</small></h3>'
+                         f'<p>{_e(m.get("omschrijving"))}</p></div>')
+        if a.get("errors"):
+            delen.append(f"<h3>Meldingen</h3>{_lijst(a['errors'])}")
+        amazon = "<h2>Amazon (AWS)</h2>" + "".join(delen)
+
     return f"""<!DOCTYPE html>
 <html lang="nl"><head><meta charset="utf-8"><meta http-equiv="refresh" content="60">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -87,6 +107,7 @@ th{{color:#a89a8c;font-weight:normal}} .fout{{color:#e5533d}} .oud td{{color:#e5
 <table><tr><th>Bron</th><th>Waarde</th><th>Bijgewerkt</th><th>Fout</th></tr>{"".join(rijen)}</table>
 {unraid}
 {wordpress}
+{amazon}
 </body></html>"""
 
 
