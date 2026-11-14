@@ -419,19 +419,31 @@ def fetch_umami(cfg: dict) -> dict:
 
 # ---------------------------------------------------------------- Meta (Facebook + Instagram)
 
+# Laatst gelukte tellers: als één van de twee een keer mislukt, blijft het vorige getal staan
+_META_LAATST: dict = {}
+
+
 def fetch_meta(cfg: dict) -> dict:
     """Volgers van de Facebook-pagina en het gekoppelde Instagram-account (één pagina-token)."""
+    import time
+
     basis = f"https://graph.facebook.com/{cfg['version']}"
     res = {"facebook": None, "instagram": None, "errors": []}
 
     def get(pad, velden):
-        try:
-            r = requests.get(f"{basis}/{pad}", params={"fields": velden, "access_token": cfg["token"]},
-                             headers=UA, timeout=20)
-            j = r.json()
-        except (requests.RequestException, ValueError) as e:
-            # requests zet de volledige URL (met token) in de foutmelding: nooit doorgeven
-            raise RuntimeError(f"verbinding met Meta mislukt ({type(e).__name__})") from None
+        # Meta laat af en toe een verbinding vallen: tot 3 pogingen met korte pauze
+        for poging in range(3):
+            try:
+                r = requests.get(f"{basis}/{pad}", params={"fields": velden, "access_token": cfg["token"]},
+                                 headers=UA, timeout=20)
+                j = r.json()
+                break
+            except (requests.RequestException, ValueError) as e:
+                if poging < 2:
+                    time.sleep(3 * (poging + 1))
+                    continue
+                # requests zet de volledige URL (met token) in de foutmelding: nooit doorgeven
+                raise RuntimeError(f"verbinding met Meta mislukt ({type(e).__name__})") from None
         if "error" in j:
             fout = j["error"]
             if fout.get("code") == 190:
@@ -455,6 +467,12 @@ def fetch_meta(cfg: dict) -> dict:
             res["errors"].append(f"instagram: {e}")
     if res["facebook"] is None and res["instagram"] is None:
         raise RuntimeError("; ".join(res["errors"]) or "geen gegevens")
+    for soort in ("facebook", "instagram"):
+        if res[soort] is None and _META_LAATST.get(soort) is not None:
+            res[soort] = _META_LAATST[soort]          # vorige waarde tonen i.p.v. "-"
+            res.setdefault("oud", []).append(soort)
+        elif res[soort] is not None:
+            _META_LAATST[soort] = res[soort]
     return res
 
 

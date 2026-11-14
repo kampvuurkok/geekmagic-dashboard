@@ -213,6 +213,10 @@ class Bron:
 def main():
     os.makedirs(CFG["data_dir"], exist_ok=True)
     state = State(os.path.join(CFG["data_dir"], "state.json"))
+    # na een herstart: laatst bekende volgers als terugval als Meta even niet antwoordt
+    for soort in ("facebook", "instagram"):
+        if (state.d.get(soort) or {}).get("last") is not None:
+            sources._META_LAATST[soort] = state.d[soort]["last"]
     preview_dir = os.path.join(CFG["data_dir"], "preview")
     os.makedirs(preview_dir, exist_ok=True)
 
