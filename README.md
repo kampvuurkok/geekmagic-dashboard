@@ -10,10 +10,11 @@ Dashboard voor een **GeekMagic SmallTV-PRO** (standaardfirmware). Een kleine con
 - **Nieuwsbrief** – aantal bevestigde leden van een phpList-lijst, met de groei van vandaag
 - **Website** – bezoekers en weergaven van vandaag, en wie er nu online is (Umami)
 - **Amazon** – alleen als er iets mis is: SES-verzending uit of account onder toezicht, domein/DKIM/MAIL FROM-domein niet in orde (bv. `nieuwsbrief: MX ontbreekt`), en open meldingen van AWS Health
+- **DMARC** – alleen als er iets mis is: mail namens je eigen domeinen die DMARC niet haalt (per afzender), mislukte TLS-verbindingen naar je mailservers, of al dagen geen nieuwe rapporten. Bron: de database van [parsedmarc](https://github.com/domainaware/parsedmarc)
 - **Updatetegels** – alleen als er iets klaarstaat: één tegel **Unraid** en één tegel per **WordPress-site** (met de sitenaam als titel), met per regel wat er bijgewerkt moet worden. Bronnen: dockers (Unraid API), compose-containers (Compose Manager; vastgepinde tellen niet mee), plugins, Unraid zelf en WordPress-sites (kern, plugins, thema's via SSH + WP-CLI)
 
 Op elke pagina:
-- een **stipje** als er updates klaarstaan of Amazon een probleem meldt (rood bij een update van Unraid of de WordPress-kern, of een ernstig Amazon-probleem)
+- een **stipje** als er updates klaarstaan of Amazon een probleem meldt (rood bij een update van Unraid of de WordPress-kern, of een ernstig Amazon- of DMARC-probleem)
 - een **druppeltje** als er binnen een uur regen komt
 - de **tijd van de laatste verversing** (rood als die te oud is)
 
@@ -106,3 +107,27 @@ Een lege lijst bij `errors` betekent dat alles leesbaar is. Met `DRY_RUN=1` gaat
 
 - Python 3.12, Pillow, requests, PyMySQL (AWS-aanvragen worden zelf ondertekend, geen boto3); lettertype Inter (SIL Open Font License, zie `fonts/`).
 - Het scherm wordt aangestuurd via zijn eigen webinterface (`/doUpload`, `/set?img=`, `/delete`). Pagina's die niet nodig zijn worden van het scherm gehaald, omdat de firmware anders zelf door alle plaatjes bladert.
+
+## DMARC (parsedmarc)
+
+Zet `dmarc` in `PAGES`. De tegel verschijnt alleen als er iets mis is. De gegevens komen uit de PostgreSQL-database van de parsedmarc-stack (container `parsedmarc-postgres`, netwerk `parsedmarc_default`; die staat al in `docker-compose.yml`).
+
+**Alleen-lezen databasegebruiker** (eenmalig, in de Unraid-terminal):
+
+```bash
+docker exec -i parsedmarc-postgres psql -U parsedmarc -d parsedmarc <<'SQL'
+CREATE ROLE geekmagic LOGIN PASSWORD 'kies-een-wachtwoord';
+GRANT CONNECT ON DATABASE parsedmarc TO geekmagic;
+GRANT USAGE ON SCHEMA public TO geekmagic;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO geekmagic;
+ALTER DEFAULT PRIVILEGES FOR ROLE parsedmarc IN SCHEMA public GRANT SELECT ON TABLES TO geekmagic;
+SQL
+```
+
+Zet het wachtwoord in `DMARC_DB_PASSWORD`. Wat als probleem telt:
+
+- **`domein: N× fout (afzender)`** – zoveel berichten met jouw domein als afzender haalden DMARC niet (vanaf `DMARC_MIN_FAIL`). Oranje is meestal iemand die je domein misbruikt (met `p=reject` worden die geweigerd); **rood** als een groot deel (`DMARC_URGENT_PERCENT`) van de mail van dat domein faalt: dan gaat er waarschijnlijk iets mis met je eigen verzending. Bekende spoofers kun je verbergen met `DMARC_IGNORE`.
+- **`TLS domein: N mislukt`** (rood) – verzenders konden geen beveiligde verbinding maken met je mailserver (MTA-STS/TLS).
+- **`geen rapporten sinds …`** – parsedmarc heeft al `DMARC_STALE_DAYS` dagen niets nieuws verwerkt.
+
+Details per domein en afzender staan op de statuspagina.

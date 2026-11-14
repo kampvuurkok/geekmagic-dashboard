@@ -21,8 +21,13 @@ services:
       - /tmp/unraidcheck:/host/unraidcheck:ro
     networks:
       - phplist
+      # om de DMARC-gegevens van parsedmarc te lezen (alleen nodig met 'dmarc' in PAGES)
+      - parsedmarc
 
 networks:
   phplist:
     external: true
     name: phplist_phplist-net
+  parsedmarc:
+    external: true
+    name: parsedmarc_default

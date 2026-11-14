@@ -10,6 +10,7 @@ import os
 import time
 
 import aws
+import dmarc
 import render
 import sources
 import status
@@ -108,6 +109,21 @@ CFG = {
         "health_days": env("AWS_HEALTH_DAYS", 7, int),
         "data_dir": env("DATA_DIR", "/data"),
         "every": env("AWS_MINUTES", 60, int) * 60,
+    },
+    "dmarc": {
+        # database van parsedmarc (alleen-lezen gebruiker)
+        "host": env("DMARC_DB_HOST", "parsedmarc-postgres"),
+        "port": env("DMARC_DB_PORT", 5432, int),
+        "db": env("DMARC_DB_NAME", "parsedmarc"),
+        "user": env("DMARC_DB_USER", "geekmagic"),
+        "password": env("DMARC_DB_PASSWORD", ""),
+        "days": env("DMARC_DAYS", 7, int),               # naar hoeveel dagen terug kijken
+        "stale_days": env("DMARC_STALE_DAYS", 3, int),   # melden als er zo lang geen rapport kwam
+        "min_fail": env("DMARC_MIN_FAIL", 5, int),       # pas melden vanaf zoveel mislukte berichten
+        "urgent_share": env("DMARC_URGENT_PERCENT", 20, int) / 100,  # rood als dit deel van een domein faalt
+        # afzenders of domeinen die je niet wilt zien (bv. bekende spoofers), komma-gescheiden
+        "ignore": [x.strip() for x in env("DMARC_IGNORE", "").split(",") if x.strip()],
+        "every": env("DMARC_MINUTES", 30, int) * 60,
     },
 }
 
@@ -212,6 +228,7 @@ def main():
         "wordpress": Bron("wordpress", lambda: sources.fetch_wordpress_updates(CFG["wordpress"]),
                           CFG["wordpress"]["every"]),
         "aws": Bron("aws", lambda: aws.fetch_aws(CFG["aws"]), CFG["aws"]["every"]),
+        "dmarc": Bron("dmarc", lambda: dmarc.fetch_dmarc(CFG["dmarc"]), CFG["dmarc"]["every"]),
     }
 
     go = CFG["google"]
@@ -251,6 +268,10 @@ def main():
         if "aws" in CFG["pages"]:
             log.warning("AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY niet ingesteld: Amazon-tegel uit")
         del bronnen["aws"]
+    if "dmarc" not in CFG["pages"] or not CFG["dmarc"]["password"]:
+        if "dmarc" in CFG["pages"]:
+            log.warning("DMARC_DB_PASSWORD niet ingesteld: DMARC-tegel uit")
+        del bronnen["dmarc"]
     if not actief:
         raise SystemExit("PAGES bevat geen bekende pagina's")
     log.info("start; pagina's: %s; scherm: %s", actief, "DRY_RUN" if tv is None else CFG["device"])
@@ -275,6 +296,7 @@ def main():
         status.zet("updates", bronnen["updates"].waarde if "updates" in bronnen else None)
         status.zet("wordpress", bronnen["wordpress"].waarde if "wordpress" in bronnen else None)
         status.zet("aws", bronnen["aws"].waarde if "aws" in bronnen else None)
+        status.zet("dmarc", bronnen["dmarc"].waarde if "dmarc" in bronnen else None)
         regen = bronnen["regen"].waarde if "regen" in bronnen else None
         upd = bronnen["updates"].waarde if updates_aan else None
         wp = bronnen["wordpress"].waarde if "wordpress" in bronnen else None
@@ -290,6 +312,13 @@ def main():
             # Amazon-problemen tellen mee voor het stipje (rood als het ernstig is)
             algemeen["updates"] = True
             algemeen["updates_urgent"] = algemeen["updates_urgent"] or am["urgent"]
+        dm = bronnen["dmarc"].waarde if "dmarc" in bronnen else None
+        if "dmarc" in bronnen and bronnen["dmarc"].fout and bronnen["dmarc"].status()["stale"]:
+            # database al een tijd onbereikbaar: dat is zelf ook een probleem
+            dm = {"problems": [("database parsedmarc onbereikbaar", False)], "total": 1, "urgent": False}
+        if dm and dm["total"]:
+            algemeen["updates"] = True
+            algemeen["updates_urgent"] = algemeen["updates_urgent"] or dm["urgent"]
 
         beelden = {}
         if "weer" in actief:
@@ -371,6 +400,13 @@ def main():
             beelden["upd:amazon"] = render.pagina_lijst("Amazon", regels, {**algemeen, **bronnen["aws"].status()},
                                                         onderkop=f"{n} probleem" + ("en" if n != 1 else ""))
             tegels.insert(0, "upd:amazon")
+        # DMARC-tegel: alleen als er een probleem is
+        if dm and dm["total"]:
+            regels = [(t, render.ROOD if e else render.ORANJE) for t, e in dm["problems"]]
+            n = dm["total"]
+            beelden["upd:dmarc"] = render.pagina_lijst("DMARC", regels, {**algemeen, **bronnen["dmarc"].status()},
+                                                       onderkop=f"{n} probleem" + ("en" if n != 1 else ""))
+            tegels.insert(0, "upd:dmarc")
         rotatie = actief + tegels
         if not rotatie:
             rotatie = list(beelden) or ["weer"]

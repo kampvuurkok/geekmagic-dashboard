@@ -8,7 +8,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-STATUS = {"bronnen": {}, "updates": None, "wordpress": None, "aws": None, "gestart": None}
+STATUS = {"bronnen": {}, "updates": None, "wordpress": None, "aws": None, "dmarc": None, "gestart": None}
 _lock = threading.Lock()
 
 
@@ -36,7 +36,7 @@ def _pagina():
         waarde = b.get("waarde")
         if isinstance(waarde, dict):
             waarde = ", ".join(f"{k}: {v}" for k, v in waarde.items()
-                               if k not in ("sites", "errors", "docker", "compose", "plugins", "core", "themes", "problems", "ses", "health"))
+                               if k not in ("sites", "errors", "docker", "compose", "plugins", "core", "themes", "problems", "ses", "health", "domains", "tls", "failing"))
         rijen.append(
             f'<tr class="{klasse}"><td>{_e(naam)}</td><td>{_e(waarde if waarde is not None else "–")}</td>'
             f'<td>{_e(b.get("bijgewerkt") or "nog niet")}</td><td>{_e(b.get("fout") or "")}</td></tr>'
@@ -89,6 +89,23 @@ def _pagina():
             delen.append(f"<h3>Meldingen</h3>{_lijst(a['errors'])}")
         amazon = "<h2>Amazon (AWS)</h2>" + "".join(delen)
 
+    dm = s.get("dmarc")
+    if dm is None:
+        dmarc = ""
+    else:
+        doms = "".join(f"<li>{_e(n)}: {_e(t['totaal'])} berichten, {_e(t['fout'])} DMARC fout</li>"
+                       for n, t in sorted((dm.get("domains") or {}).items()))
+        tls = "".join(f"<li>{_e(n)}: {_e(t['gelukt'])} gelukt, {_e(t['mislukt'])} mislukt</li>"
+                      for n, t in sorted((dm.get("tls") or {}).items()))
+        bronnen_fout = "".join(f"<li>{_e(f['domein'])} ← {_e(f['bron'])}: {_e(f['aantal'])}</li>"
+                               for f in dm.get("failing") or [])
+        dmarc = ("<h2>DMARC</h2>"
+                 f"<p>laatste rapport: {_e(dm.get('last_report') or dm.get('note') or '–')}</p>"
+                 f"<h3>Problemen</h3>{_lijst([p[0] for p in dm.get('problems') or []], 'geen problemen')}"
+                 f"<h3>Per domein</h3>" + (f"<ul>{doms}</ul>" if doms else "<p>nog geen gegevens</p>")
+                 + f"<h3>Afzenders die DMARC niet halen</h3>" + (f"<ul>{bronnen_fout}</ul>" if bronnen_fout else '<p class="ok">geen</p>')
+                 + f"<h3>SMTP TLS</h3>" + (f"<ul>{tls}</ul>" if tls else "<p>nog geen gegevens</p>"))
+
     return f"""<!DOCTYPE html>
 <html lang="nl"><head><meta charset="utf-8"><meta http-equiv="refresh" content="60">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -108,6 +125,7 @@ th{{color:#a89a8c;font-weight:normal}} .fout{{color:#e5533d}} .oud td{{color:#e5
 {unraid}
 {wordpress}
 {amazon}
+{dmarc}
 </body></html>"""
 
 
